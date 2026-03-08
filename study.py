@@ -263,115 +263,103 @@ def set_user_model(user_id: int, model: str):
     _user_model[user_id] = model
 
 # ════════════════════════════════════════════════════════════
-# 🔧 SAFE SEND HELPERS  (never crash on long/special text)
+# 🔧 SAFE SEND HELPERS
+# reply_markup can be a raw JSON string (for colored buttons)
+# or an InlineKeyboardMarkup object — both handled here
 # ════════════════════════════════════════════════════════════
+
 async def safe_reply(message, text: str, reply_markup=None):
+    """Send reply. Passes raw JSON string as reply_markup to preserve style field."""
+    txt = text[:4096]
     try:
-        await message.reply_text(text, reply_markup=reply_markup)
-    except Exception:
+        if isinstance(reply_markup, str):
+            # Raw JSON — use bot.send_message directly to bypass PTB serialization
+            await message.get_bot().send_message(
+                chat_id=message.chat_id,
+                text=txt,
+                reply_markup=reply_markup,
+            )
+        else:
+            await message.reply_text(txt, reply_markup=reply_markup)
+    except Exception as e:
         try:
-            await message.reply_text(text[:4000], reply_markup=reply_markup)
-        except Exception as e:
-            await message.reply_text(f"Error sending response: {e}")
+            await message.reply_text(txt)
+        except Exception:
+            pass
 
 async def safe_edit(msg, text: str, reply_markup=None):
+    """Edit message. Passes raw JSON string as reply_markup to preserve style field."""
+    txt = text[:4096]
     try:
-        await msg.edit_text(text, reply_markup=reply_markup)
+        if isinstance(reply_markup, str):
+            await msg.get_bot().edit_message_text(
+                chat_id=msg.chat_id,
+                message_id=msg.message_id,
+                text=txt,
+                reply_markup=reply_markup,
+            )
+        else:
+            await msg.edit_text(txt, reply_markup=reply_markup)
     except Exception:
         try:
-            await msg.edit_text(text[:4000], reply_markup=reply_markup)
+            await msg.edit_text(txt)
         except Exception:
             pass
 
 # ════════════════════════════════════════════════════════════
-# 🎨 KEYBOARDS
+# 🎨 KEYBOARDS  (Bot API 9.4 colored buttons via raw JSON)
+# style="primary" = blue, style="secondary" = grey
+# PTB strips unknown fields — so we pass reply_markup as JSON
+# string directly to Telegram, bypassing PTB serialization
 # ════════════════════════════════════════════════════════════
-def main_menu_keyboard():
-    # Using raw dict to support Bot API 9.4 colored buttons (style field)
-    keyboard = {
-        "inline_keyboard": [
-            [
-                cbtn("📚 Books",     callback_data="cat_books",    style="primary"),
-                cbtn("📂 Modules",   callback_data="cat_modules",  style="primary"),
-            ],
-            [
-                cbtn("📝 PYQs",      callback_data="cat_pyqs",     style="primary"),
-                cbtn("🧮 Formulas",  callback_data="cat_formulas", style="primary"),
-            ],
-            [
-                cbtn("🏋️ Practice",  callback_data="cat_practice", style="primary"),
-                cbtn("🤖 AI Models", callback_data="show_models",  style="secondary"),
-            ],
-            [
-                cbtn("📖 Help",      callback_data="show_help",    style="secondary"),
-                cbtn("📊 Stats",     callback_data="show_stats",   style="secondary"),
-            ],
-        ]
-    }
-    return InlineKeyboardMarkup.de_json(keyboard, bot=None)
 
-def resource_keyboard(category: str):
+import json as _json
+
+def _kb(rows: list) -> str:
+    """Return keyboard as raw JSON string so style field is preserved."""
+    return _json.dumps({"inline_keyboard": rows})
+
+def _btn(text: str, cb: str = None, url: str = None, style: str = "primary") -> dict:
+    b = {"text": text, "style": style}
+    if cb:  b["callback_data"] = cb
+    if url: b["url"] = url
+    return b
+
+def main_menu_keyboard() -> str:
+    return _kb([
+        [_btn("📚 Books", cb="cat_books"), _btn("📂 Modules", cb="cat_modules")],
+        [_btn("📝 PYQs",  cb="cat_pyqs"),  _btn("🧮 Formulas", cb="cat_formulas")],
+        [_btn("🏋️ Practice", cb="cat_practice"), _btn("🤖 AI Models", cb="show_models", style="secondary")],
+        [_btn("📖 Help", cb="show_help", style="secondary"), _btn("📊 Stats", cb="show_stats", style="secondary")],
+    ])
+
+def resource_keyboard(category: str) -> str:
     items = RESOURCES.get(category, [])
-    rows = [[InlineKeyboardButton(f"🔗 {item['name']}", url=item["url"])] for item in items]
-    rows.append([InlineKeyboardButton("🔙 Back to Menu", callback_data="main_menu")])
-    return InlineKeyboardMarkup(rows)
+    rows = [[_btn(f"🔗 {item['name']}", url=item["url"])] for item in items]
+    rows.append([_btn("🔙 Back to Menu", cb="main_menu", style="secondary")])
+    return _kb(rows)
 
-def model_select_keyboard():
-    keyboard = {
-        "inline_keyboard": [
-            [cbtn("⚡ DeepSeek-V3-0324  (Fast + Smart)",  callback_data="model_deepseek_v3",          style="primary")],
-            [cbtn("🧠 DeepSeek-R1  (Deep Reasoning)",     callback_data="model_deepseek_r1",           style="primary")],
-            [cbtn("🦙 DeepSeek-R1-Distill-Llama-70B",     callback_data="model_deepseek_r1_distill",   style="primary")],
-            [cbtn("🔙 Back",                              callback_data="main_menu",                   style="secondary")],
-        ]
-    }
-    return InlineKeyboardMarkup.de_json(keyboard, bot=None)
+def model_select_keyboard() -> str:
+    return _kb([
+        [_btn("⚡ DeepSeek-V3-0324  (Fast + Smart)",  cb="model_deepseek_v3")],
+        [_btn("🧠 DeepSeek-R1  (Deep Reasoning)",     cb="model_deepseek_r1")],
+        [_btn("🦙 DeepSeek-R1-Distill-Llama-70B",     cb="model_deepseek_r1_distill")],
+        [_btn("🔙 Back", cb="main_menu", style="secondary")],
+    ])
 
-def menu_btn():
-    """Small menu button — appended only to resource/category messages."""
-    return InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Menu", callback_data="main_menu")]])
+def menu_btn() -> str:
+    return _kb([[_btn("🏠 Menu", cb="main_menu", style="secondary")]])
 
-def admin_keyboard():
-    keyboard = {
-        "inline_keyboard": [
-            [
-                cbtn("📊 Live Stats",   callback_data="admin_stats",         style="primary"),
-                cbtn("👥 Users",        callback_data="admin_users",         style="primary"),
-            ],
-            [
-                cbtn("🤖 Model",        callback_data="admin_model",         style="primary"),
-                cbtn("📢 Broadcast",    callback_data="admin_broadcast_info",style="primary"),
-            ],
-            [
-                cbtn("🖥️ System Info",  callback_data="admin_sysinfo",       style="secondary"),
-                cbtn("🗑️ Clear Memory", callback_data="admin_clearmem",      style="secondary"),
-            ],
-            [cbtn("❌ Close",           callback_data="main_menu",           style="secondary")],
-        ]
-    }
-    return InlineKeyboardMarkup.de_json(keyboard, bot=None)
+def back_btn(label: str = "🔙 Back", cb: str = "main_menu") -> str:
+    return _kb([[_btn(label, cb=cb, style="secondary")]])
 
-# ════════════════════════════════════════════════════════════
-# 🎨 COLORED BUTTON HELPER
-# Bot API 9.4 added "style" field to InlineKeyboardButton
-# Values: "primary" (blue), "secondary" (grey)
-# PTB may not expose it yet — we inject it manually via dict
-# ════════════════════════════════════════════════════════════
-
-def cbtn(text: str, callback_data: str = None, url: str = None, style: str = None) -> dict:
-    """Build a colored InlineKeyboardButton as raw dict."""
-    btn = {"text": text}
-    if callback_data:
-        btn["callback_data"] = callback_data
-    if url:
-        btn["url"] = url
-    if style:
-        btn["style"] = style   # "primary" = blue, "secondary" = grey
-    return btn
-
-def colored_markup(rows: list) -> dict:
-    """Build raw inline_keyboard dict for use with raw API calls."""
-    return {"inline_keyboard": rows}
+def admin_keyboard() -> str:
+    return _kb([
+        [_btn("📊 Live Stats", cb="admin_stats"), _btn("👥 Users", cb="admin_users")],
+        [_btn("🤖 Model", cb="admin_model"),      _btn("📢 Broadcast", cb="admin_broadcast_info")],
+        [_btn("🖥️ System Info", cb="admin_sysinfo", style="secondary"), _btn("🗑️ Clear Memory", cb="admin_clearmem", style="secondary")],
+        [_btn("❌ Close", cb="main_menu", style="secondary")],
+    ])
 
 def is_admin(uid: int) -> bool:
     return uid in ADMIN_IDS
@@ -495,10 +483,10 @@ async def cmd_pyq(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "3) Years this topic appeared heavily 4) Tips to score. Be exam-focused."
     )
     answer = await ask_ai(uid, f"PYQ analysis for: {query}", system=system, use_history=False)
-    kb = InlineKeyboardMarkup([
+    kb = _kb([
         [
-            InlineKeyboardButton("📁 JEE Advanced PYQs", url="https://drive.google.com/drive/folders/1omIy2ZmvVDrRUSlJ5SK60YtPKOvxyUv_"),
-            InlineKeyboardButton("📁 JEE Mains PYQs",    url="https://drive.google.com/drive/folders/1odsK6Erh70ezoT6q_KEUzvO2TFgI9FPq"),
+            _btn("📁 JEE Advanced PYQs", url="https://drive.google.com/drive/folders/1omIy2ZmvVDrRUSlJ5SK60YtPKOvxyUv_"),
+            _btn("📁 JEE Mains PYQs",    url="https://drive.google.com/drive/folders/1odsK6Erh70ezoT6q_KEUzvO2TFgI9FPq"),
         ],
     ])
     result = (
@@ -583,9 +571,7 @@ async def cmd_formula(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "List all important formulas: Formula name: expression — when to use."
     )
     answer = await ask_ai(uid, f"All formulas for: {query}", system=system, use_history=False)
-    kb = InlineKeyboardMarkup([[
-        InlineKeyboardButton("📋 Full Formula Sheets", url="https://drive.google.com/drive/folders/181t1DrbwqTvcdmMpM4gADWcy2WZq90as")
-    ]])
+    kb = _kb([[_btn("📋 Full Formula Sheets", url="https://drive.google.com/drive/folders/181t1DrbwqTvcdmMpM4gADWcy2WZq90as")]])
     result = (
         f"🧮 {to_mono('FORMULAS')}: {query}\n"
         f"{SEP}\n\n"
@@ -888,7 +874,7 @@ async def handle_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             "Resources: /books /modules /pyqs /formulas /practice\n"
             "Info: /stats /start /help\n"
             "Admin: /admin /broadcast",
-            InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="main_menu")]])
+            back_btn("🔙 Back", cb="main_menu")
         )
 
     elif data == "show_stats":
@@ -901,7 +887,7 @@ async def handle_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             f"AI Calls : {bot_stats['ai_calls']}\n"
             f"Memory   : {total_mem} msgs\n"
             f"Uptime   : {uptime_str()}",
-            InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="main_menu")]])
+            back_btn("🔙 Back", cb="main_menu")
         )
 
     elif data.startswith("model_"):
@@ -911,7 +897,7 @@ async def handle_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await safe_edit(
             q.message,
             f"✅ {to_mono('Model changed!')}\n\nNow using:\n{to_mono(model_name)}",
-            InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="main_menu")]])
+            back_btn("🔙 Back", cb="main_menu")
         )
 
     # ── Admin callbacks ──────────────────────────────────
@@ -929,7 +915,7 @@ async def handle_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             f"  Uptime       :  {uptime_str()}\n"
             f"  Started      :  {bot_stats['start_time'].strftime('%d %b %Y %H:%M')}\n"
             f"  Default Model:  {DEFAULT_MODEL}",
-            InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="back_admin")]])
+            back_btn("🔙 Back", cb="back_admin")
         )
 
     elif data == "admin_users" and is_admin(uid):
@@ -939,7 +925,7 @@ async def handle_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             f"Total registered users: {len(bot_stats['total_users'])}\n"
             f"Active memory sessions: {len([v for v in user_memory.values() if len(v) > 0])}\n"
             f"Total memory messages : {sum(len(v) for v in user_memory.values())}",
-            InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="back_admin")]])
+            back_btn("🔙 Back", cb="back_admin")
         )
 
     elif data == "admin_model" and is_admin(uid):
@@ -953,7 +939,7 @@ async def handle_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await safe_edit(
             q.message,
             f"📢 {to_mono('Broadcast')}\n\nUsage:\n/broadcast Your message here",
-            InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="back_admin")]])
+            back_btn("🔙 Back", cb="back_admin")
         )
 
     elif data == "admin_sysinfo" and is_admin(uid):
@@ -967,7 +953,7 @@ async def handle_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             f"  Fallback     :  Auto model fallback on 500\n"
             f"  Framework    :  python-telegram-bot v21\n"
             f"  Status       :  Running",
-            InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="back_admin")]])
+            back_btn("🔙 Back", cb="back_admin")
         )
 
     elif data == "admin_clearmem" and is_admin(uid):
@@ -977,7 +963,7 @@ async def handle_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await safe_edit(
             q.message,
             f"🗑️ {to_mono('All memory cleared!')}\n\n{total_before} messages removed from all users.",
-            InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="back_admin")]])
+            back_btn("🔙 Back", cb="back_admin")
         )
 
     elif data == "back_admin" and is_admin(uid):

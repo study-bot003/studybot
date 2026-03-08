@@ -287,24 +287,28 @@ async def safe_edit(msg, text: str, reply_markup=None):
 # 🎨 KEYBOARDS
 # ════════════════════════════════════════════════════════════
 def main_menu_keyboard():
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("📚 Books",     callback_data="cat_books", style="primary"),
-            InlineKeyboardButton("📂 Modules",   callback_data="cat_modules"),
-        ],
-        [
-            InlineKeyboardButton("📝 PYQs",      callback_data="cat_pyqs"),
-            InlineKeyboardButton("🧮 Formulas",  callback_data="cat_formulas"),
-        ],
-        [
-            InlineKeyboardButton("🏋️ Practice",  callback_data="cat_practice"),
-            InlineKeyboardButton("🤖 AI Models", callback_data="show_models"),
-        ],
-        [
-            InlineKeyboardButton("📖 Help",      callback_data="show_help"),
-            InlineKeyboardButton("📊 Stats",     callback_data="show_stats"),
-        ],
-    ])
+    # Using raw dict to support Bot API 9.4 colored buttons (style field)
+    keyboard = {
+        "inline_keyboard": [
+            [
+                cbtn("📚 Books",     callback_data="cat_books",    style="primary"),
+                cbtn("📂 Modules",   callback_data="cat_modules",  style="primary"),
+            ],
+            [
+                cbtn("📝 PYQs",      callback_data="cat_pyqs",     style="primary"),
+                cbtn("🧮 Formulas",  callback_data="cat_formulas", style="primary"),
+            ],
+            [
+                cbtn("🏋️ Practice",  callback_data="cat_practice", style="primary"),
+                cbtn("🤖 AI Models", callback_data="show_models",  style="secondary"),
+            ],
+            [
+                cbtn("📖 Help",      callback_data="show_help",    style="secondary"),
+                cbtn("📊 Stats",     callback_data="show_stats",   style="secondary"),
+            ],
+        ]
+    }
+    return InlineKeyboardMarkup.de_json(keyboard, bot=None)
 
 def resource_keyboard(category: str):
     items = RESOURCES.get(category, [])
@@ -313,33 +317,61 @@ def resource_keyboard(category: str):
     return InlineKeyboardMarkup(rows)
 
 def model_select_keyboard():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("⚡ DeepSeek-V3-0324  (Fast + Smart)",  callback_data="model_deepseek_v3")],
-        [InlineKeyboardButton("🧠 DeepSeek-R1  (Deep Reasoning)",     callback_data="model_deepseek_r1")],
-        [InlineKeyboardButton("🦙 DeepSeek-R1-Distill-Llama-70B",     callback_data="model_deepseek_r1_distill")],
-        [InlineKeyboardButton("🔙 Back",                              callback_data="main_menu")],
-    ])
+    keyboard = {
+        "inline_keyboard": [
+            [cbtn("⚡ DeepSeek-V3-0324  (Fast + Smart)",  callback_data="model_deepseek_v3",          style="primary")],
+            [cbtn("🧠 DeepSeek-R1  (Deep Reasoning)",     callback_data="model_deepseek_r1",           style="primary")],
+            [cbtn("🦙 DeepSeek-R1-Distill-Llama-70B",     callback_data="model_deepseek_r1_distill",   style="primary")],
+            [cbtn("🔙 Back",                              callback_data="main_menu",                   style="secondary")],
+        ]
+    }
+    return InlineKeyboardMarkup.de_json(keyboard, bot=None)
 
 def menu_btn():
     """Small menu button — appended only to resource/category messages."""
     return InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Menu", callback_data="main_menu")]])
 
 def admin_keyboard():
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("📊 Live Stats",   callback_data="admin_stats"),
-            InlineKeyboardButton("👥 Users",        callback_data="admin_users"),
-        ],
-        [
-            InlineKeyboardButton("🤖 Model",        callback_data="admin_model"),
-            InlineKeyboardButton("📢 Broadcast",    callback_data="admin_broadcast_info"),
-        ],
-        [
-            InlineKeyboardButton("🖥️ System Info",  callback_data="admin_sysinfo"),
-            InlineKeyboardButton("🗑️ Clear Memory", callback_data="admin_clearmem"),
-        ],
-        [InlineKeyboardButton("❌ Close",           callback_data="main_menu")],
-    ])
+    keyboard = {
+        "inline_keyboard": [
+            [
+                cbtn("📊 Live Stats",   callback_data="admin_stats",         style="primary"),
+                cbtn("👥 Users",        callback_data="admin_users",         style="primary"),
+            ],
+            [
+                cbtn("🤖 Model",        callback_data="admin_model",         style="primary"),
+                cbtn("📢 Broadcast",    callback_data="admin_broadcast_info",style="primary"),
+            ],
+            [
+                cbtn("🖥️ System Info",  callback_data="admin_sysinfo",       style="secondary"),
+                cbtn("🗑️ Clear Memory", callback_data="admin_clearmem",      style="secondary"),
+            ],
+            [cbtn("❌ Close",           callback_data="main_menu",           style="secondary")],
+        ]
+    }
+    return InlineKeyboardMarkup.de_json(keyboard, bot=None)
+
+# ════════════════════════════════════════════════════════════
+# 🎨 COLORED BUTTON HELPER
+# Bot API 9.4 added "style" field to InlineKeyboardButton
+# Values: "primary" (blue), "secondary" (grey)
+# PTB may not expose it yet — we inject it manually via dict
+# ════════════════════════════════════════════════════════════
+
+def cbtn(text: str, callback_data: str = None, url: str = None, style: str = None) -> dict:
+    """Build a colored InlineKeyboardButton as raw dict."""
+    btn = {"text": text}
+    if callback_data:
+        btn["callback_data"] = callback_data
+    if url:
+        btn["url"] = url
+    if style:
+        btn["style"] = style   # "primary" = blue, "secondary" = grey
+    return btn
+
+def colored_markup(rows: list) -> dict:
+    """Build raw inline_keyboard dict for use with raw API calls."""
+    return {"inline_keyboard": rows}
 
 def is_admin(uid: int) -> bool:
     return uid in ADMIN_IDS
@@ -362,24 +394,28 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     bot_stats["total_users"].add(user.id)
     name = to_mono(user.first_name[:20])
     text = (
-    "˹𝚩𝛌𝛂𝛇𝛆 ꭙ 𝐒ᴛᴜᴅʏ𝐇ᴇʟᴘᴇʀ˼ 🚀\n"
-    "𝚈𝚘𝚞𝚛 𝙰𝙸-𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚂𝚝𝚞𝚍𝚢 𝙲𝚘𝚖𝚙𝚊𝚗𝚒𝚘𝚗\n\n"
-    "⚡ 𝚆𝚎𝚕𝚌𝚘𝚖𝚎! 👋\n\n"
-    "📡 𝙰𝚕𝚠𝚊𝚢𝚜 𝚘𝚗𝚕𝚒𝚗𝚎. 𝙰𝚕𝚠𝚊𝚢𝚜 𝚛𝚎𝚊𝚍𝚢.\n\n"
-    "──────────────────────────────────\n"
-    "𝚀𝚄𝙸𝙲𝙺 𝙲𝙾𝙼𝙼𝙰𝙽𝙳𝚂 🔥\n"
-    "──────────────────────────────────\n"
-    "/𝚊𝚜𝚔 ➤ 𝙰𝚜𝚔 𝙰𝙸 𝚊𝚗𝚢𝚝𝚑𝚒𝚗𝚐\n"
-    "/𝚙𝚢𝚚 ➤ 𝙿𝚈𝚀 𝚊𝚗𝚊𝚕𝚢𝚜𝚒𝚜 & 𝚙𝚊𝚝𝚝𝚎𝚛𝚗𝚜\n"
-    "/𝚙𝚍𝚏 ➤ 𝙵𝚒𝚗𝚍 𝙿𝙳𝙵 𝚛𝚎𝚜𝚘𝚞𝚛𝚌𝚎𝚜\n"
-    "/𝚎𝚡𝚙𝚕𝚊𝚒𝚗 ➤ 𝙴𝚡𝚙𝚕𝚊𝚒𝚗 𝚊𝚗𝚢 𝚌𝚘𝚗𝚌𝚎𝚙𝚝\n"
-    "/𝚏𝚘𝚛𝚖𝚞𝚕𝚊 ➤ 𝙶𝚎𝚝 𝚏𝚘𝚛𝚖𝚞𝚕𝚊𝚜\n"
-    "/𝚖𝚘𝚍𝚎𝚕 ➤ 𝚂𝚠𝚒𝚝𝚌𝚑 𝙰𝙸 𝚖𝚘𝚍𝚎𝚕\n"
-    "/𝚌𝚕𝚎𝚊𝚛 ➤ 𝙲𝚕𝚎𝚊𝚛 𝚌𝚑𝚊𝚝 𝚖𝚎𝚖𝚘𝚛𝚢\n"
-    "/𝚑𝚎𝚕𝚙 ➤ 𝙵𝚞𝚕𝚕 𝚌𝚘𝚖𝚖𝚊𝚗𝚍 𝚕𝚒𝚜𝚝\n"
-    "──────────────────────────────────\n\n"
-    "👇 𝚄𝚜𝚎 𝚝𝚑𝚎 𝚖𝚎𝚗𝚞 𝚋𝚎𝚕𝚘𝚠 𝚝𝚘 𝚐𝚎𝚝 𝚜𝚝𝚊𝚛𝚝𝚎𝚍!"
-)
+        "╔══════════════════════════════════════╗\n"
+        "║  ˹𝚩𝛌𝛂𝛇𝛆 ꭙ 𝐒ᴛᴜᴅʏ𝐇ᴇʟᴘᴇʀ˼  🚀         ║\n"
+        "║    Your AI-Powered Study Companion    ║\n"
+        "╚══════════════════════════════════════╝\n\n"
+        f"⚡ Welcome, {name}! 👋\n\n"
+        "🤖 Powered by SambaNova DeepSeek AI\n"
+        "🧠 Remembers your last 40 messages\n"
+        "📡 Always online. Always ready.\n\n"
+        f"{SEP}\n"
+        f"{to_mono('QUICK COMMANDS')} 🔥\n"
+        f"{SEP}\n"
+        "/ask   ➤  Ask AI anything\n"
+        "/pyq   ➤  PYQ analysis & patterns\n"
+        "/pdf   ➤  Find PDF resources\n"
+        "/explain ➤ Explain any concept\n"
+        "/formula ➤ Get formulas\n"
+        "/model  ➤  Switch AI model\n"
+        "/clear  ➤  Clear chat memory\n"
+        "/help   ➤  Full command list\n"
+        f"{SEP}\n\n"
+        "👇 Use the menu below to get started!"
+    )
     await update.message.reply_text(text, reply_markup=main_menu_keyboard())
 
 
@@ -1024,5 +1060,4 @@ def main():
 
 
 if __name__ == "__main__":
-
     main()

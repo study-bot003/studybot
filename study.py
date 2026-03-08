@@ -289,7 +289,7 @@ async def safe_edit(msg, text: str, reply_markup=None):
 def main_menu_keyboard():
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("📚 Books",     callback_data="cat_books"),
+            InlineKeyboardButton("📚 Books",     callback_data="cat_books", style="primary"),
             InlineKeyboardButton("📂 Modules",   callback_data="cat_modules"),
         ],
         [
@@ -1024,4 +1024,5 @@ def main():
 
 
 if __name__ == "__main__":
+
     main()
